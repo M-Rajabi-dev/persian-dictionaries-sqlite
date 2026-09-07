@@ -1,0 +1,66 @@
+name: Build Databases
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag name'
+        required: false
+        default: 'latest'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y liblzo2-dev p7zip-full
+          pip install python-lzo readmdict
+
+      - name: Clone source dictionaries
+        run: |
+          git clone --depth 1 https://github.com/sornay/Persian-Dictionaries.git source_repo
+
+      - name: Convert MDX to SQLite
+        run: |
+          python convert.py
+
+      - name: Compress databases
+        run: |
+          7z a -t7z -mx=9 amid.sqlite.7z amid.sqlite
+          7z a -t7z -mx=9 moin.sqlite.7z moin.sqlite
+          7z a -t7z -mx=9 dehkhoda.sqlite.7z dehkhoda.sqlite
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="latest"
+          fi
+
+          FILES="amid.sqlite moin.sqlite dehkhoda.sqlite amid.sqlite.7z moin.sqlite.7z dehkhoda.sqlite.7z"
+          NOTES="SQLite databases converted from sornay/Persian-Dictionaries. Includes Dehkhoda, Moin, and Amid."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --clobber
+          else
+            gh release create "$TAG" $FILES --title "Persian Dictionaries SQLite Databases ($TAG)" --notes "$NOTES"
+          fi

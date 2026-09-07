@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+source_repo/
+*.db
+*.7z
+*.sqlite
+.DS_Store
+.vscode/
